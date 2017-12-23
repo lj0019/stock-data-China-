@@ -1,0 +1,357 @@
+## python
+## 大盘指数
+import pandas as pd
+import numpy as np
+import tushare as ts
+import os
+import shutil
+
+os.getcwd()
+os.chdir("C:/Users/---/Desktop/数据")   #修改当前工作目录
+
+## 寻找上一数据日期
+last_data_date = max([int(i[4:]) for i in os.listdir("ts大盘数据")])
+## 所有交易日期
+all_date = [int(i.replace("-", "")) for i in ts.trade_cal()["calendarDate"][ts.trade_cal()["isOpen"] == 1]]
+
+## 寻找上一交易日期
+def func(x, lst):
+    i = 0
+    while(lst[i] <= x):
+        i += 1
+    return lst[i-1]
+last_data_day = str(func(last_data_date, all_date))
+
+## 更新到新日期，创建新文件夹
+new_date = "20171220"
+os.mkdir("ts大盘数据/大盘数据"+new_date)
+shutil.copyfile("ts大盘数据/大盘数据"+str(last_data_date)+"/"+"stock_info.csv","ts大盘数据/大盘数据"+new_date+"/"+"stock_info.csv")
+
+## 获取数据起始与终止日期
+start_date = last_data_day[0:4]+"-"+last_data_day[4:6]+"-"+last_data_day[6:8]
+end_date = new_date[0:4]+"-"+new_date[4:6]+"-"+new_date[6:8]
+
+## 大盘补全
+## 399001, 399005, 399006, 399300
+dapan_code = ["399001", "399005", "399006", "399300"]
+for i in dapan_code:
+    old_dapan = pd.read_csv("ts大盘数据/大盘数据"+str(last_data_date)+"/"+i+".csv", engine='python')
+    new_dapan = ts.get_h_data(i, start=start_date, end=end_date,  index=True, pause=4)
+    new_dapan.sort_index(inplace=True)
+    new_dapan[["open", "high", "close", "low"]] = new_dapan[["open", "high", "close", "low"]]*10000
+    new_dapan["date"] = new_dapan.index
+    new_dapan["date"] = new_dapan["date"].astype(str).apply(lambda x:x.replace('-', ''))
+    new_dapan.columns = ['open','high', 'close', 'low', 'volumw', 'turover', 'date']
+    if new_dapan.iloc[0, 4] == old_dapan.iloc[-1, 8]:
+        new_dapan.drop(new_dapan.index[0], axis=0, inplace=True)
+        dapan = old_dapan.append(new_dapan, ignore_index=True)
+        dapan = dapan[old_dapan.columns]
+        dapan.fillna(method='ffill',inplace=True)
+        dapan.to_csv("ts大盘数据/大盘数据"+new_date+"/"+i+".csv", index=False)
+
+## 000001 --> 999999 上证指数 
+old_dapan = pd.read_csv("ts大盘数据/大盘数据"+str(last_data_date)+"/"+"999999.csv", engine='python')
+    
+start_date = last_data_day[0:4]+"-"+last_data_day[4:6]+"-"+last_data_day[6:8]
+end_date = new_date[0:4]+"-"+new_date[4:6]+"-"+new_date[6:8]
+new_dapan = ts.get_h_data("000001", start=start_date, end=end_date,  index=True, pause=4)
+    
+new_dapan.sort_index(inplace=True)
+new_dapan[["open", "high", "close", "low"]] = new_dapan[["open", "high", "close", "low"]]*10000
+new_dapan["date"] = new_dapan.index
+new_dapan["date"] = new_dapan["date"].astype(str).apply(lambda x:x.replace('-', ''))
+new_dapan.columns = ['open','high', 'close', 'low', 'volumw', 'turover', 'date']
+
+if new_dapan.iloc[0, 4] == old_dapan.iloc[-1, 8]:
+  new_dapan.drop(new_dapan.index[0], axis=0, inplace=True)
+  dapan = old_dapan.append(new_dapan, ignore_index=True)
+  dapan = dapan[old_dapan.columns]
+  dapan.fillna(method='ffill',inplace=True)
+  dapan.to_csv("ts大盘数据/大盘数据"+new_date+"/"+"999999.csv", index=False)
+  
+  
+  
+  
+  
+  
+## R
+## 股票数据
+## 自动补全函数
+## new.date:补全截至时间
+library(WindR)
+library(xlsx)
+library(data.table)
+library(magrittr)
+library(tcltk2)
+# (.packages())
+
+w.start()
+setwd("C:/Users/---/Desktop/坴戋/华泰/数据")
+
+
+## 1.设置截至日期（若补当日数据，五点之后执行）
+new.date <- "20171220"
+
+end.date <- paste(substr(new.date, 1, 4), substr(new.date, 5, 6), 
+                  substr(new.date, 7, 8), sep = "-")
+
+## 2.摘取当日在市股票代码
+stock.code.df <- w.wset('sectorconstituent',
+                        paste0("date=", end.date, ";sectorid=a001010100000000"))
+if(stock.code.df$ErrorCode == 0){
+  stock.code.sh.sz <- stock.code.df$Data$wind_code
+}else{
+  print(paste0("获取数据出错，错误代码", stock.code.df$ErrorCode))
+}
+new.stock.code <- substr(stock.code.sh.sz, 1, 6)
+# str(stock.code.sh.sz)
+
+## 3.获取上一次数据日期
+old.file.name <- gsub("股票数据", "", dir("股票数据"))
+last.data.day <- old.file.name[which.max(old.file.name)] ## 是否需要改为数值型比较
+## 4.数据上一次所有股票代码
+old.stock.code <- gsub(".csv", "", dir(paste0("股票数据/股票数据", last.data.day)))
+
+## 5.创建新的文件夹
+dir.create(paste0("股票数据/股票数据", new.date))
+dir.create(paste0("大盘数据/大盘/大盘", new.date))
+dir.create(paste0("大盘数据/新大盘/新大盘", new.date))
+
+
+## 7.股票补全部分
+
+## 概括性文件变量
+## 退市数据保留执行以下部分代码，不保留执行已有那一行注释代码
+all.stock.code <- unique(c(new.stock.code, old.stock.code))
+general.information <- data.frame(array(dim=c(length(all.stock.code), 5)))
+# general.information <- data.frame(array(dim=c(length(stock.code.sh.sz), 5)))
+
+colnames(general.information) <- c("stock.code", "stock.name", "type", "starttime", "endtime")
+
+## 大盘日期
+dapan.date <- read.csv(paste0("大盘数据/新大盘/新大盘", new.date, "/399300.csv"))$date
+
+## 设置进度条
+pb <- tkProgressBar("进度", "已完成 %", 0, 100) 
+
+
+for(i in 1:length(stock.code.sh.sz)){
+  if(new.stock.code[i] %in% old.stock.code){
+    old.df <- fread(paste0("股票数据/股票数据", last.data.day, "/", new.stock.code[i], ".csv"), 
+                    header=TRUE, integer64="numeric", sep = ",")
+    ## 寻找原数据中最后有交易数据的行数与日期
+    if(old.df$volumw[nrow(old.df)] != 0){
+      j <- nrow(old.df)
+      last.trading.day <- old.df$date[j]
+    }else{
+      j <- nrow(old.df)
+      while(old.df$volumw[j] == 0 & j > 0){
+        j <- j - 1
+      }
+      last.trading.day <- old.df$date[j]
+    }
+    start.date <- paste(substr(last.trading.day, 1, 4), substr(last.trading.day, 5, 6), 
+                        substr(last.trading.day, 7, 8), sep = "-")
+
+    new.data <- w.wsd(stock.code.sh.sz[i], "trade_code, sec_name, open, high, low, close,
+                      volume, amt, free_turn,free_float_shares",
+                      start.date, end.date, "unit=1;PriceAdj=F")
+    if(new.data$ErrorCode == 0){
+      if(any(is.na(new.data$Data))){
+        ## 退市又复市
+        if(any(is.na(new.data$Data[1, ]))){
+          print(paste(stock.code.sh.sz[i], "退市又复市,但上个交易日数据获取为NA,仅输出新数据"))
+          wind.df <- data.frame(array(dim=c(nrow(new.data$Data), 12)))
+          colnames(wind.df) <- c("wind_code", "name", "date", "time", "open", "high", "low", "close", 
+                                 "volumw", "turover", "free_turn", "free_float_shares")
+          wind.df[, 1]    <- new.data$Code
+          wind.df[, 2]    <- new.data$Data$SEC_NAME
+          wind.df[, 3]    <- gsub("-", "", new.data$Data$DATETIME)
+          wind.df[, 4]    <- 151500000
+          wind.df[, 5:8]  <- new.data$Data[4:7] * 10000
+          wind.df[, 9:12] <- new.data$Data[8:11]
+          wind.df <- wind.df[!(is.na(wind.df$open)), ]
+        }else if(all(round(unlist(old.df[j, 5:8])) == round(unlist(new.data$Data[1, 4:7]*10000)))){
+          ## 退市复市股权未变动
+          print(paste(stock.code.sh.sz[i], "退市又复市,股权未变动"))
+          wind.df <- data.frame(array(dim=c(nrow(old.df)+nrow(new.data$Data)-1, 12)))
+          colnames(wind.df) <- c("wind_code", "name", "date", "time", "open", "high", "low", "close", "volumw",
+                                 "turover", "free_turn", "free_float_shares")
+          wind.df[1:nrow(old.df), ] <- old.df[, 1:12] # 14变为12
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 1]    <- new.data$Code
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 2]    <- new.data$Data$SEC_NAME[-1]
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 3]    <- gsub("-", "", new.data$Data$DATETIME)[-1]
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 4]    <- 151500000
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 5:8]  <- new.data$Data[-1, 4:7] * 10000
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 9:12] <- new.data$Data[-1, 8:11]
+          wind.df <- wind.df[!(is.na(wind.df$open)), ]
+          # 停牌重复行删去
+          wind.df <- wind.df[!duplicated(wind.df$date), ]
+        }else{
+          ## 退市复市股权变动
+          print(paste(stock.code.sh.sz[i], "退市又复市,股权变动"))
+          wind.df <- data.frame(array(dim=c(nrow(old.df)+nrow(new.data$Data)-1, 12)))
+          colnames(wind.df) <- c("wind_code", "name", "date", "time", "open", "high", "low", "close", "volumw",
+                                 "turover", "free_turn", "free_float_shares")
+          ## 以开盘价定复权因子
+          ratio <- unlist(new.data$Data[1, 4]*10000 / old.df[j, 5])
+          wind.df[1:nrow(old.df), 1:4]  <- old.df[, 1:4]
+          wind.df[1:nrow(old.df), 5:8]  <- old.df[, 5:8] * ratio
+          wind.df[1:nrow(old.df), 9:12] <- old.df[, 9:12]
+          
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 1]    <- new.data$Code
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 2]    <- new.data$Data$SEC_NAME[-1]
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 3]    <- gsub("-", "", new.data$Data$DATETIME)[-1]
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 4]    <- 151500000
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 5:8]  <- new.data$Data[-1, 4:7] * 10000
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 9:12] <- new.data$Data[-1, 8:11]
+          wind.df <- wind.df[!(is.na(wind.df$open)), ]
+          # 停牌重复行删去
+          wind.df <- wind.df[!duplicated(wind.df$date), ]
+        }
+      }else{
+        ## 是否停牌不影响，只需判断股权是否变动
+        if(all(round(unlist(old.df[j, 5:8])) == round(unlist(new.data$Data[1, 4:7]*10000)))){
+          ## 股权未变动
+          wind.df <- data.frame(array(dim=c(nrow(old.df)+nrow(new.data$Data)-1, 12)))
+          colnames(wind.df) <- c("wind_code", "name", "date", "time", "open", "high", "low", "close", "volumw",
+                                 "turover", "free_turn", "free_float_shares")
+          wind.df[1:nrow(old.df), ] <- old.df[, 1:12]
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 1]    <- new.data$Code
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 2]    <- new.data$Data$SEC_NAME[-1]
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 3]    <- gsub("-", "", new.data$Data$DATETIME)[-1]
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 4]    <- 151500000
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 5:8]  <- new.data$Data[-1, 4:7] * 10000
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 9:12] <- new.data$Data[-1, 8:11]
+          wind.df <- wind.df[!(is.na(wind.df$open)), ]
+          # 停牌重复行删去
+          wind.df <- wind.df[!duplicated(wind.df$date), ]
+        }else{
+          ## 股权变动
+          print(paste(stock.code.sh.sz[i], "股权变动"))
+          wind.df <- data.frame(array(dim=c(nrow(old.df)+nrow(new.data$Data)-1, 12)))
+          colnames(wind.df) <- c("wind_code", "name", "date", "time", "open", "high", "low", "close", "volumw",
+                                 "turover", "free_turn", "free_float_shares")
+          ## 以开盘价定复权因子
+          ratio <- unlist(new.data$Data[1, 4]*10000 / old.df[j, 5])
+          wind.df[1:nrow(old.df), 1:4]  <- old.df[, 1:4]
+          wind.df[1:nrow(old.df), 5:8]  <- old.df[, 5:8] * ratio
+          wind.df[1:nrow(old.df), 9:12] <- old.df[, 9:12]
+          
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 1]    <- new.data$Code
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 2]    <- new.data$Data$SEC_NAME[-1]
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 3]    <- gsub("-", "", new.data$Data$DATETIME)[-1]
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 4]    <- 151500000
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 5:8]  <- new.data$Data[-1, 4:7] * 10000
+          wind.df[(nrow(old.df)+1):nrow(wind.df), 9:12] <- new.data$Data[-1, 8:11]
+          wind.df <- wind.df[!(is.na(wind.df$open)), ]
+          wind.df <- wind.df[!duplicated(wind.df$date), ]
+        }
+      }
+    }else{
+      print(paste0(stock.code.sh.sz[i], "获取数据出错，错误代码：", new.data$ErrorCode))
+      break
+    }
+  }else{
+    # 新上市股票
+    print(paste(stock.code.sh.sz[i], "新上市股票"))
+    start.date <- paste(substr(last.data.day, 1, 4), substr(last.data.day, 5, 6), 
+                        substr(last.data.day, 7, 8), sep = "-")
+    
+    new.data <- w.wsd(stock.code.sh.sz[i], "trade_code, sec_name, open, high, low, close, volume, amt,
+                      free_turn, free_float_shares",
+                      start.date, end.date, "unit=1;PriceAdj=F")
+    if(new.data$ErrorCode == 0){
+      wind.df <- data.frame(array(dim=c(nrow(new.data$Data), 12)))
+      colnames(wind.df) <- c("wind_code", "name", "date", "time", "open", "high", "low", "close", "volumw",
+                             "turover", "free_turn", "free_float_shares")
+      wind.df[, 1]    <- new.data$Code
+      wind.df[, 2]    <- new.data$Data$SEC_NAME
+      wind.df[, 3]    <- gsub("-", "", new.data$Data$DATETIME)
+      wind.df[, 4]    <- 151500000
+      wind.df[, 5:8]  <- new.data$Data[4:7] * 10000
+      wind.df[, 9:12] <- new.data$Data[8:11]
+      wind.df         <- wind.df[!(is.na(wind.df$open)), ]
+    }else{
+      print(paste0(stock.code.sh.sz[i], "新上市股票获取数据出错，错误代码：", new.data$ErrorCode))
+      break
+    }
+  }
+  
+  ## 输出部分
+  if(nrow(wind.df) == 0){
+    print(paste(stock.code.sh.sz[i], "数据出错（在市股票不可能全为NA导致数据框行为0）"))
+  }else{
+    if(any(is.na(wind.df))){
+      print(paste(stock.code.sh.sz[i], "数据出错（数据中仍有NA）"))
+    }else{
+      if(any(wind.df[, 5:8] == 0)){
+        print(paste(stock.code.sh.sz[i], "数据出错（数据中开高低收存在0）"))
+      }else{
+        if(any(table(wind.df$date) > 1)){
+          print(paste(stock.code.sh.sz[i], "数据出错（数据中存在日期相同）"))
+        }else{
+          if(any(wind.df$date != sort(wind.df$date))){
+            print(paste(stock.code.sh.sz[i], "数据出错（数据中日期顺序不对）"))
+          }else{
+            # 是否与大盘日期匹配,所有日期必须在大盘已有日期内
+            if(all(wind.df$date %in% dapan.date)){
+              first.date <- paste(substr(wind.df$date[1], 1, 4), substr(wind.df$date[1], 5, 6), 
+                                  substr(wind.df$date[1], 7, 8), sep = "-")
+              test <- w.wsd(stock.code.sh.sz[i], "trade_code, sec_name, open, high, low, close, volume, amt,
+                                                  free_turn, free_float_shares",
+                            first.date, first.date, "unit=1;PriceAdj=F")
+              if(all(round(test$Data[4:7]*10000) == round(wind.df[1, 5:8])) & test$Data$VOLUME == wind.df[1, 9]){
+                general.information[i, 1] <- substr(stock.code.sh.sz[i], 1, 6)
+                general.information[i, 2] <- wind.df$name[1]
+                general.information[i, 3] <- substr(stock.code.sh.sz[i], 8, 9)
+                general.information[i, 4] <- wind.df[1, 3]
+                general.information[i, 5] <- wind.df[nrow(wind.df), 3]
+                write.csv(wind.df, paste0("股票数据/股票数据", new.date, "/", new.stock.code[i], ".csv"), 
+                          row.names = FALSE)
+              }else{
+                print(paste(stock.code.sh.sz[i], "数据出错（数据补全与wind不同）"))
+              }
+            }else{
+              print(paste(stock.code.sh.sz[i], "数据出错（数据中日期与大盘日期不符）"))
+            }
+          }
+        }
+      }
+    }
+  }
+  rm(wind.df);rm(old.df);rm(j)
+  info <- sprintf("已完成 %d%%", round(i*100/length(stock.code.sh.sz)))
+  setTkProgressBar(pb, i*100/length(stock.code.sh.sz), sprintf("进度 (%s)", info), info)
+}
+
+## 关闭进度条
+close(pb) 
+
+
+## 退市数据继续保留，则执行下面代码
+tuishi.row <- 1
+for(i in 1:length(old.stock.code)){
+  if(!(old.stock.code[i] %in% new.stock.code)){
+    print(paste(stock.code.sh.sz, "仍然退市"))
+    old.df <- fread(paste0("股票数据/股票数据", last.data.day, "/", new.stock.code[i], ".csv"), 
+                    header=TRUE, integer64="numeric", sep = ",")
+    df <- old.df[, 1:12]
+    write.csv(df, paste("股票数据/股票数据", new.date, "/", new.stock.code[i], ".csv", sep=""), 
+              row.names = FALSE)
+    tuishi.row <- tuishi.row + 1
+    general.information[length(stock.code.sh.sz)+tuishi.row, 1] <- old.stock.code[i]
+    general.information[length(stock.code.sh.sz)+tuishi.row, 2] <- df$name[1]
+    general.information[length(stock.code.sh.sz)+tuishi.row, 3] <- substr(df$wind_code[1], 8, 9)
+    general.information[length(stock.code.sh.sz)+tuishi.row, 4] <- df[1, 3]
+    general.information[length(stock.code.sh.sz)+tuishi.row, 5] <- df[nrow(df), 3]
+  }
+}
+
+
+## 总概括文件中无NA时输出
+if(all(!(is.na(general.information)))){
+  write.xlsx(general.information, paste0("概括文件/概括文件", new.date, ".xlsx"), row.names = FALSE)
+}else{
+  print("总概况文件中存在NA，需查验")
+}
